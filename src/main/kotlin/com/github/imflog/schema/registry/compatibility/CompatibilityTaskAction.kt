@@ -1,6 +1,7 @@
 package com.github.imflog.schema.registry.compatibility
 
 import io.confluent.kafka.schemaregistry.client.SchemaRegistryClient
+import io.confluent.kafka.schemaregistry.client.rest.exceptions.RestClientException
 import org.apache.avro.Schema
 import org.gradle.api.logging.Logging
 import java.io.File
@@ -17,12 +18,20 @@ class CompatibilityTaskAction(
         for ((subject, path, dependencies) in subjects) {
             logger.debug("Loading schema for subject($subject) from $path.")
             val parsedSchema: Schema = parseSchemas(path, dependencies)
-            val compatible = client.testCompatibility(subject, parsedSchema)
-            if (compatible) {
-                logger.info("Schema $path is compatible with subject($subject)")
-            } else {
-                logger.error("Schema $path is not compatible with subject($subject)")
-                errorCount++
+            try {
+                val compatible = client.testCompatibility(subject, parsedSchema)
+                if (compatible) {
+                    logger.info("Schema $path is compatible with subject($subject)")
+                } else {
+                    logger.error("Schema $path is not compatible with subject($subject)")
+                    errorCount++
+                }
+            } catch (re: RestClientException) {
+                if (re.status == 404) {
+                    logger.info("Schema $path for subject($subject) does not exist yet")
+                } else {
+                    throw re
+                }
             }
         }
         return errorCount
